@@ -1,0 +1,39 @@
+@passport_blue.route("/sms_code" ,methods = ["POST"])
+def sms_code():
+    print("前端发送过来的地址 = " + request.url)
+    # 获取用户在注册页面填写的手机号
+    mobile = request.json.get("mobile")
+    # 获取用户在注册页面填写的图片验证码
+    image_code = request.json.get("image_code")
+    # 获取到跟图片验证码一一绑定在一起id
+    image_code_id = request.json.get("image_code_id")
+
+    # 从redis服务器获取到uuid
+    redis_image_code = redis_store.get("sms_code_" + image_code_id)
+
+    if not redis_image_code:
+        return jsonify(errno = RET.NODATA,errmsg = "图片验证码过期")
+
+    # 判断用户输入的验证码是否有问题
+    # lower()提高用户体验,把用户输入的值和服务器的值全部小写
+    if image_code.lower() != redis_image_code.lower():
+        return jsonify(errno = RET.PARAMERR,errmsg = "验证码输入错误")
+
+    # 随机生成验证码
+    result = random.randint(0,999999)
+    # 保持验证码是6位
+    sms_code  = "%06d"%result
+    print("短信验证码 = " + sms_code)
+    # 存储后端随机生成的短信验证码
+    redis_store.set("code_"+mobile,sms_code,300)
+
+    # 发送短信
+    # 第一个参数发送给哪个手机号,最多一次只能发送200个手机号,通过,分割
+    # 第二个参数是数组形式进行发送[sms_code,100],数组里面的第一个参数表示随机验证码,第二个参数表示多久过期,单位是分钟
+    # 第三个参数表示模板id 默认值表示1
+    statusCode = CCP().send_template_sms(mobile,[sms_code, 5],1)
+
+    if statusCode != 0:
+        return jsonify(errno = RET.THIRDERR,errmsg = "发送短信失败")
+
+    return jsonify(errno = RET.OK,errmsg = "发送短信成功")
